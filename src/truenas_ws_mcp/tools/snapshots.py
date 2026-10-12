@@ -2,11 +2,30 @@ from truenas_ws_mcp.server import mcp, get_client
 
 
 @mcp.tool
-async def list_snapshots(dataset: str | None = None) -> list:
-    """List ZFS snapshots. Always specify a dataset to avoid timeouts on large systems."""
+async def list_snapshots(dataset: str | None = None, limit: int = 100) -> list:
+    """List ZFS snapshots (newest first) with creation time, used, and referenced size."""
     client = await get_client()
     filters = [["dataset", "=", dataset]] if dataset else []
-    return await client.call("zfs.snapshot.query", [filters])
+    # Fetching every snapshot property costs ~0.6s and ~5KB per snapshot; ask for three.
+    options = {
+        "order_by": ["-createtxg"],
+        "limit": limit,
+        "extra": {"properties": ["creation", "used", "referenced"]},
+    }
+    # pool.snapshot.query is the 25.04+ name; zfs.snapshot.query is the older alias.
+    snapshots = await client.call_first([
+        ("pool.snapshot.query", [filters, options]),
+        ("zfs.snapshot.query", [filters, options]),
+    ])
+    result = []
+    for snap in snapshots:
+        props = snap.get("properties") or {}
+        result.append({
+            "name": snap.get("name"),
+            "dataset": snap.get("dataset"),
+            **{key: (props.get(key) or {}).get("value") for key in ("creation", "used", "referenced")},
+        })
+    return result
 
 
 @mcp.tool
