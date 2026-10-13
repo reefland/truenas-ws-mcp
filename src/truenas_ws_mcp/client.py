@@ -92,6 +92,20 @@ class TrueNASClient:
 
         return msg.get("result")
 
+    async def call_first(self, candidates: list[tuple[str, list | None]]) -> Any:
+        """Call the first (method, params) pair this TrueNAS version implements.
+
+        Methods get renamed between releases; list the newest name first. Only a
+        missing method ([ENOMETHOD]) falls through to the next candidate.
+        """
+        for index, (method, params) in enumerate(candidates):
+            try:
+                return await self.call(method, params)
+            except RuntimeError as exc:
+                if "[ENOMETHOD]" not in str(exc) or index == len(candidates) - 1:
+                    raise
+                logger.debug("%s not available, trying %s", method, candidates[index + 1][0])
+
     async def _listener(self):
         """Background task that routes incoming messages."""
         try:

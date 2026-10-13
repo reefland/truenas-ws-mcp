@@ -12,4 +12,5 @@ async def list_interfaces() -> list:
 async def get_network_config() -> dict:
     """Get network configuration: DNS servers, gateway, hostname."""
     client = await get_client()
-    return await client.call("network.configuration", [])
+    # The "network.configuration" service became "network.configuration.config" in 25.10.
+    return await client.call("network.configuration.config", [])
