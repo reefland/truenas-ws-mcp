@@ -137,7 +137,7 @@ Markers: ¹ uses a newer API name with automatic fallback for older releases;
 ## Development
 
 ```bash
-git clone https://github.com/thoriphes/truenas-ws-mcp.git
+git clone https://github.com/reefland/truenas-ws-mcp.git
 cd truenas-ws-mcp
 uv sync
 cp env.example .env
