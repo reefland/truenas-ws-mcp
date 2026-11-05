@@ -24,40 +24,21 @@ async def list_disks() -> list:
 async def get_disk_temps() -> list:
     """Get current temperatures for all disks."""
     client = await get_client()
-    disks = await client.call("disk.query", [])
+    disks = await client.call("disk.query", [[], {"select": ["name"]}])
+    # One call for every disk. The old per-disk reporting.netdata_graph
+    # ("disktemp", {"identifier": ...}) query fails on TrueNAS 25.10 with
+    # "query.identifier: Extra inputs are not permitted".
+    temps = await client.call("disk.temperatures", [])
 
     results = []
     for d in disks:
         disk_name = d.get("name")
         if not disk_name:
             continue
-        try:
-            graph = await client.call(
-                "reporting.netdata_graph",
-                [
-                    "disktemp",
-                    {
-                        "unit": "HOUR",
-                        "page": 1,
-                        "identifier": disk_name,
-                    },
-                ],
-            )
-            # Extract the latest temperature reading from the graph data.
-            # The response typically contains a "data" list of data points;
-            # each point is a list where the first element after the timestamp
-            # is the temperature value.
-            temp = None
-            if isinstance(graph, dict):
-                data_points = graph.get("data", [])
-                # Walk backwards to find the most recent non-null reading
-                for point in reversed(data_points):
-                    if isinstance(point, list) and len(point) >= 2 and point[1] is not None:
-                        temp = point[1]
-                        break
-            results.append({"disk": disk_name, "temperature": temp})
-        except Exception:
-            # Some disks (e.g. NVMe) may not report temps via this method
+        temp = temps.get(disk_name)
+        if temp is None:
             results.append({"disk": disk_name, "temperature": None, "error": "unable to retrieve temperature"})
+        else:
+            results.append({"disk": disk_name, "temperature": temp})
 
     return results
