@@ -28,7 +28,25 @@ async def get_reporting_data(
     Memory/ARC values in bytes, CPU in percentage.
     """
     query = {"unit": unit, "page": 1}
-    if identifier is not None:
-        query["identifier"] = identifier
     client = await get_client()
-    return await client.call("reporting.netdata_graph", [graph, query])
+    if identifier is None:
+        return await client.call("reporting.netdata_graph", [graph, query])
+
+    # TrueNAS 25.10 rejects "identifier" inside the netdata_graph query
+    # ("Extra inputs are not permitted"); it has to go through
+    # reporting.get_data instead. Disk graphs there are keyed by a full label
+    # such as "sda | Type: HDD | Model: ... | Serial: ...", and a bare "sda"
+    # silently matches nothing, so resolve the short name to the full label.
+    graphs = await client.call("reporting.graphs", [[["name", "=", graph]]])
+    known = (graphs[0].get("identifiers") or []) if graphs else []
+    if identifier not in known:
+        matches = [i for i in known if i.split(" | ", 1)[0] == identifier]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Unknown identifier {identifier!r} for graph {graph!r}. "
+                f"Available: {known}"
+            )
+        identifier = matches[0]
+    return await client.call(
+        "reporting.get_data", [[{"name": graph, "identifier": identifier}], query]
+    )
